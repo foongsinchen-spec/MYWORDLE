@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Custom Wordle - GitHub Pages</title>
+<style>
+body { font-family: Arial, sans-serif; text-align: center; background: #f5f5f5; }
+#game { display: inline-block; margin-top: 20px; }
+.row { display: flex; justify-content: center; margin: 2px 0; }
+.tile { width: 40px; height: 40px; border: 2px solid #ccc; margin: 1px;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: bold; font-size: 20px; background: white; text-transform: uppercase; }
+.correct { background: #6aaa64; color: white !important; }
+.present { background: #c9b458; color: white !important; }
+.absent { background: #787c7e; color: white !important; }
+#keyboard { margin-top: 20px; }
+.key { display: inline-block; width: 30px; height: 40px; margin: 2px;
+       border-radius: 4px; background: #d3d6da; font-weight: bold;
+       display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; }
+.key.correct { background: #6aaa64; color: white; }
+.key.present { background: #c9b458; color: white; }
+.key.absent { background: #787c7e; color: white; }
+#linkGenerator { margin-top: 30px; }
+</style>
+</head>
+<body>
+<h1>Custom Wordle - GitHub Pages</h1>
+<div id="status"></div>
+<div id="game"></div>
+<div id="keyboard"></div>
+<div id="linkGenerator">
+  <h3>Generate New Puzzle Link</h3>
+  <input type="text" id="newWord" placeholder="Enter secret word">
+  <button onclick="generateLink()">Generate Link</button>
+  <div id="newLink"></div>
+</div>
+<script>
+const MAX_GUESSES = 6;
+let secretWord = '';
+let currentGuess = '';
+let guesses = [];
+const keyboardLayout = ["QWERTYUIOP","ASDFGHJKL","ZXCVBNM"];
+
+// Published CSV link from your Google Sheet
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTmTosXumsPyI19m0F5IPwbXYNDA6OQ5pQh08XU_MPNcGsNo5Tasi9S0ivW0lnUF6S3Yk3cbqj0yjkd/pub?output=csv';
+
+async function fetchSecretWord(){
+  const urlParams = new URLSearchParams(window.location.search);
+  const key = urlParams.get('key');
+  if(!key){
+    document.getElementById('status').innerText = 'No key provided';
+    return;
+  }
+  try{
+    const res = await fetch(SHEET_CSV_URL);
+    const text = await res.text();
+    const lines = text.split('\n');
+    const dict = {};
+    lines.forEach(line => {
+      const [id, word] = line.split(',');
+      if(id && word) dict[id.trim()] = word.trim().toUpperCase();
+    });
+    if(dict[key]){
+      secretWord = dict[key];
+      initGame();
+    } else {
+      document.getElementById('status').innerText = 'Key not found';
+    }
+  } catch(e){
+    document.getElementById('status').innerText = 'Error fetching sheet';
+    console.error(e);
+  }
+}
+
+function initGame(){
+  renderBoard();
+  renderKeyboard();
+}
+
+function renderBoard(){
+  const gameDiv = document.getElementById("game");
+  gameDiv.innerHTML = '';
+  for(let i=0;i<MAX_GUESSES;i++){
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'row';
+    for(let j=0;j<secretWord.length;j++){
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      if(guesses[i]){
+        tile.textContent = guesses[i][j];
+        if(guesses[i][j] === secretWord[j]) tile.classList.add('correct');
+        else if(secretWord.includes(guesses[i][j])) tile.classList.add('present');
+        else tile.classList.add('absent');
+      } else if(i === guesses.length){
+        tile.textContent = currentGuess[j] || '';
+      }
+      rowDiv.appendChild(tile);
+    }
+    gameDiv.appendChild(rowDiv);
+  }
+}
+
+function renderKeyboard(){
+  const kbDiv = document.getElementById('keyboard');
+  kbDiv.innerHTML = '';
+  keyboardLayout.forEach(row => {
+    const rowDiv = document.createElement('div');
+    for(const letter of row){
+      const key = document.createElement('div');
+      key.className = 'key';
+      key.textContent = letter;
+      key.onclick = ()=>handleKey(letter);
+      rowDiv.appendChild(key);
+    }
+    kbDiv.appendChild(rowDiv);
+  });
+  const lastRow = document.createElement('div');
+  const enterKey = document.createElement('div');
+  enterKey.className = 'key'; enterKey.textContent = '⏎'; enterKey.onclick = ()=>handleKey('ENTER');
+  const delKey = document.createElement('div');
+  delKey.className = 'key'; delKey.textContent = '⌫'; delKey.onclick = ()=>handleKey('BACKSPACE');
+  lastRow.appendChild(enterKey); lastRow.appendChild(delKey);
+  kbDiv.appendChild(lastRow);
+}
+
+function handleKey(key){
+  if(guesses.length >= MAX_GUESSES) return;
+  if(key==='ENTER'){
+    if(currentGuess.length!==secretWord.length) return;
+    guesses.push(currentGuess);
+    currentGuess='';
+    renderBoard();
+    checkWin();
+  } else if(key==='BACKSPACE'){
+    currentGuess = currentGuess.slice(0,-1);
+    renderBoard();
+  } else if(/^[A-Z]$/.test(key)){
+    if(currentGuess.length < secretWord.length){
+      currentGuess += key;
+      renderBoard();
+    }
+  }
+}
+
+function checkWin(){
+  if(guesses[guesses.length-1]===secretWord){
+    setTimeout(()=>alert('You guessed it!'),50);
+  } else if(guesses.length===MAX_GUESSES){
+    setTimeout(()=>alert('Out of guesses! Word was: '+secretWord),50);
+  }
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter') handleKey('ENTER');
+  else if(e.key==='Backspace') handleKey('BACKSPACE');
+  else if(/^[a-zA-Z]$/.test(e.key)) handleKey(e.key.toUpperCase());
+});
+
+function generateLink(){
+  const word = document.getElementById('newWord').value.trim().toUpperCase();
+  if(!word){ alert('Enter a word'); return; }
+  const key = Math.random().toString(36).substring(2,8);
+  const link = window.location.origin+window.location.pathname+'?key='+key;
+  document.getElementById('newLink').innerHTML = 'Link: <a href="'+link+'" target="_blank">'+link+'</a>';
+  alert('Save this key in your Google Sheet: '+key+' → '+word);
+}
+
+fetchSecretWord();
+</script>
+</body>
+</html>
